@@ -8,8 +8,15 @@
 
 #include "AMQPcpp.h"
 
+using namespace std;
+
 AMQPException::AMQPException(string message) {
 	this->message= message;
+}
+
+AMQPException::AMQPException(string action, int error_code)
+{
+	this->message = action + " : " + amqp_error_string2(error_code);
 }
 
 AMQPException::AMQPException( amqp_rpc_reply_t * res) {
@@ -19,7 +26,7 @@ AMQPException::AMQPException( amqp_rpc_reply_t * res) {
 
 	if( res->reply_type == AMQP_RESPONSE_SERVER_EXCEPTION) {
 		char buf[512];
-		bzero(buf,512);
+		memset(buf,0,512);
 		this->code = 0;
 
 		if(res->reply.id == AMQP_CONNECTION_CLOSE_METHOD) {
@@ -49,10 +56,10 @@ AMQPException::AMQPException( amqp_rpc_reply_t * res) {
 	}
 }
 
-uint16_t AMQPException::getReplyCode() {
+uint16_t AMQPException::getReplyCode() const {
 	return code;
 }
 
-string AMQPException::getMessage() {
+string AMQPException::getMessage() const {
 	return message;
 }

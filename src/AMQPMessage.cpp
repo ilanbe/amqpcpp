@@ -8,6 +8,8 @@
 
 #include "AMQPcpp.h"
 
+using namespace std;
+
 AMQPMessage::AMQPMessage( AMQPQueue * queue ) {
 	this->queue=queue;
 	 message_count=-1;
@@ -27,8 +29,12 @@ void AMQPMessage::setMessage(const char * data,uint32_t length) {
 	if (this->data)
 		free(this->data);
 
-	this->data = (char*)malloc(length);
+	this->data = (char*)malloc(length + 1);
+	if (!this->data) {
+		throw AMQPException("setMessage: malloc failed");
+	}
 	memcpy(this->data,data,length);
+	this->data[length] = '\0';
 	this->len = length;
 }
 
@@ -105,15 +111,15 @@ void AMQPMessage::addHeader(string name, amqp_bytes_t * value) {
 
 void AMQPMessage::addHeader(string name, uint64_t * value) {
 	char ivalue[32];
-	bzero(ivalue,32);
-	sprintf(ivalue,"%llu", *value);
+	memset(ivalue,0,32);
+	sprintf(ivalue,"%lu", *value);
 	headers[name] = string(ivalue);
 	//headers.insert(pair<string,string>(name,string(ivalue)));
 }
 
 void AMQPMessage::addHeader(string name, uint8_t * value) {
 	char ivalue[4];
-	bzero(ivalue,4);
+	memset(ivalue,0,4);
 	sprintf(ivalue,"%d",*value);
 	headers[name] = string(ivalue);
 	//headers.insert( pair<string,string>(name,string(ivalue)));

@@ -8,6 +8,8 @@
 
 #include "AMQPcpp.h"
 
+using namespace std;
+
 AMQPQueue::AMQPQueue(amqp_connection_state_t * cnn, int channelNum) {
 	this->cnn = cnn;
 	this->channelNum = channelNum;
@@ -92,7 +94,7 @@ void AMQPQueue::sendDeclareCommand() {
 
 	amqp_release_buffers(*cnn);
 	char error_message [256];
-	bzero(error_message,256);
+	memset(error_message,0,256);
 
 	if (res.reply_type == AMQP_RESPONSE_NONE) {
 		throw AMQPException("error the QUEUE.DECLARE command, response none");
@@ -158,7 +160,7 @@ void AMQPQueue::Purge(string name) {
 void AMQPQueue::sendPurgeCommand() {
 	amqp_bytes_t queue = amqp_cstring_bytes(name.c_str());
 
-	amqp_queue_delete_t s;
+	amqp_queue_purge_t s;
 		s.ticket = 0;
 		s.queue = queue;
 		s.nowait = ( AMQP_NOWAIT & parms ) ? 1:0;
@@ -363,10 +365,23 @@ void AMQPQueue::sendGetCommand() {
 }
 
 void AMQPQueue::addEvent( AMQPEvents_e eventType, int (*event)(AMQPMessage*)) {
-	if (events.find(eventType) != events.end())
-		throw AMQPException("the event alredy added");
+    #if __cplusplus > 199711L // C++11 or greater
+        std::function<int(AMQPMessage*)> callback = &(*event);
+        addEvent(eventType, callback);
+#else
+        if (events.find(eventType) != events.end())
+		throw AMQPException("event already added");
 	events[eventType] = reinterpret_cast< int(*)( AMQPMessage * ) > (event);
+#endif
 }
+
+#if __cplusplus > 199711L // C++11 or greater
+void AMQPQueue::addEvent( AMQPEvents_e eventType, std::function<int(AMQPMessage*)>& event) {
+	if (events.find(eventType) != events.end())
+		throw AMQPException("the event already added");
+	events[eventType] = event;
+}
+#endif
 
 void AMQPQueue::Consume() {
 	parms=0;
@@ -383,7 +398,7 @@ void AMQPQueue::setConsumerTag(string consumer_tag) {
 }
 
 void AMQPQueue::sendConsumeCommand() {
-	amqp_basic_consume_ok_t *consume_ok;
+//	amqp_basic_consume_ok_t *consume_ok;
 	amqp_bytes_t queueByte = amqp_cstring_bytes(name.c_str());
 
 	char error_message[256];
@@ -428,12 +443,16 @@ void AMQPQueue::sendConsumeCommand() {
 		throw AMQPException(error_message);
 	} else if (res.reply.id == AMQP_BASIC_CANCEL_OK_METHOD) {
 		return;//cancel ok
-	} else if (res.reply.id == AMQP_BASIC_CONSUME_OK_METHOD) {
-		consume_ok = (amqp_basic_consume_ok_t*) res.reply.decoded;
-		//printf("****** consume Ok c_tag=%s", consume_ok->consumer_tag.bytes );
 	}
-
+//		else if (res.reply.id == AMQP_BASIC_CONSUME_OK_METHOD) {
+//		consume_ok = (amqp_basic_consume_ok_t*) res.reply.decoded;
+//		//printf("****** consume Ok c_tag=%s", consume_ok->consumer_tag.bytes );
+//	}
+#if __cplusplus > 199711L // C++11 or greater
+        unique_ptr<AMQPMessage> message ( new AMQPMessage(this) );
+#else
 	auto_ptr<AMQPMessage> message ( new AMQPMessage(this) );
+#endif
 	pmessage = message.get();
 
 	amqp_frame_t frame;
@@ -461,7 +480,11 @@ void AMQPQueue::sendConsumeCommand() {
 		if (frame.payload.method.id == AMQP_BASIC_CANCEL_OK_METHOD){
 			//cout << "CANCEL OK method.id="<< frame.payload.method.id << endl;
 			if ( events.find(AMQP_CANCEL) != events.end() ) {
+#if __cplusplus > 199711L // C++11 or greater
+                                events[AMQP_CANCEL](pmessage);
+#else                            
 				(*events[AMQP_CANCEL])(pmessage);
+#endif                                
 			}
 			break;
 		}
@@ -524,7 +547,12 @@ void AMQPQueue::sendConsumeCommand() {
 		free(buf);
 
 		if ( events.find(AMQP_MESSAGE) != events.end() ) {
+#if __cplusplus > 199711L // C++11 or greater
+                        int res = events[AMQP_MESSAGE](pmessage);
+#else                            
 			int res = (int)(*events[AMQP_MESSAGE])(pmessage);
+#endif 
+			
 			//cout << "res="<<res<<endl;
 			if (res) break;
 		}

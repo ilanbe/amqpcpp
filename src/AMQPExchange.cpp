@@ -8,6 +8,8 @@
 
 #include "AMQPcpp.h"
 
+using namespace std;
+
 AMQPExchange::AMQPExchange(amqp_connection_state_t * cnn, int channelNum) {
 	this->cnn = cnn;
 	this->channelNum = channelNum;
@@ -66,11 +68,12 @@ void AMQPExchange::sendDeclareCommand() {
 	args.entries = NULL;
 
 	amqp_boolean_t passive =	(parms & AMQP_PASSIVE)		? 1:0;
-	//amqp_boolean_t autodelete = (parms & AMQP_AUTODELETE)	? 1:0;
+	amqp_boolean_t autodelete = (parms & AMQP_AUTODELETE)	? 1:0;
 	amqp_boolean_t durable =	(parms & AMQP_DURABLE)		? 1:0;
+	amqp_boolean_t internal = 0;
 
-	//amqp_exchange_declare(*cnn, (amqp_channel_t) 1, exchange, exchangetype, passive, durable, autodelete, args ); //for some reason rabbitmq-c doesn't have auto-delete now...
-	amqp_exchange_declare(*cnn, (amqp_channel_t) 1, exchange, exchangetype, passive, durable, args );
+	amqp_exchange_declare(*cnn, (amqp_channel_t) 1, exchange, exchangetype, passive, durable, autodelete, internal, args );
+	//amqp_exchange_declare(*cnn, (amqp_channel_t) 1, exchange, exchangetype, passive, durable, args );
 
 	amqp_rpc_reply_t res =amqp_get_rpc_reply(*cnn);
 
@@ -173,9 +176,10 @@ void AMQPExchange::Publish(string message, string key) {
 	sendPublishCommand(amqp_cstring_bytes(message.c_str()), key.c_str());
 }
 
-void AMQPExchange::Publish(const char * data, uint32_t length, string key) {
-	amqp_bytes_t messageByte = amqp_bytes_malloc(length);
-	memcpy(messageByte.bytes,data,length);
+void AMQPExchange::Publish(char * data, uint32_t length, string key) {
+	amqp_bytes_t messageByte;
+	messageByte.bytes = data;
+	messageByte.len = length;
 	sendPublishCommand(messageByte, key.c_str());
 }
 
@@ -253,7 +257,7 @@ void AMQPExchange::sendPublishCommand(amqp_bytes_t messageByte, const char * key
 	}
 
 	props.headers.num_entries = sHeadersSpecial.size();
-	amqp_table_entry_t_ entries[props.headers.num_entries];
+	amqp_table_entry_t_ *entries = (amqp_table_entry_t_*) malloc(sizeof(amqp_table_entry_t_) * props.headers.num_entries);
 
 	int i = 0;
 	map<string, string>::iterator it;
@@ -279,6 +283,8 @@ void AMQPExchange::sendPublishCommand(amqp_bytes_t messageByte, const char * key
 		&props,
 		messageByte
 	);
+	
+	free(entries);
 
         if ( 0 > res ) {
 		throw AMQPException("AMQP Publish Fail." );
